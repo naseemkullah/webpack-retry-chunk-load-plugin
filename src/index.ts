@@ -15,6 +15,12 @@ export interface RetryChunkLoadPluginOptions {
    */
   chunks?: string[];
   /**
+   * Optional value to skip throwing an error.
+   * May be useful if you are confident in and satisfied with your last resort script.
+   * Defaults to false.
+   */
+  dontThrow?: boolean;
+  /**
    * optional code to be executed in the browser context if after all retries chunk is not loaded.
    * if not set - nothing will happen and error will be returned to the chunk loader.
    */
@@ -39,6 +45,8 @@ export class RetryChunkLoadPlugin {
   apply(compiler: Compiler) {
     compiler.hooks.thisCompilation.tap(pluginName, compilation => {
       const { mainTemplate, runtimeTemplate } = compilation;
+      const { cacheBust, chunks, dontThrow, lastResortScript, retryDelay } =
+        this.options;
       const maxRetryValueFromOptions = Number(this.options.maxRetries);
       const maxRetries =
         Number.isInteger(maxRetryValueFromOptions) &&
@@ -46,18 +54,16 @@ export class RetryChunkLoadPlugin {
           ? maxRetryValueFromOptions
           : 1;
       const getCacheBustString = () =>
-        this.options.cacheBust
+        cacheBust
           ? `
-                  (${this.options.cacheBust})();
+                  (${cacheBust})();
                 `
           : '"cache-bust=true"';
       mainTemplate.hooks.localVars.tap(
         { name: pluginName, stage: 1 },
         (source, chunk) => {
           const currentChunkName = chunk.name;
-          const addRetryCode =
-            !this.options.chunks ||
-            this.options.chunks.includes(currentChunkName);
+          const addRetryCode = !chunks || chunks.includes(currentChunkName);
           if (!addRetryCode) return source;
           const script = runtimeTemplate.iife(
             '',
@@ -78,12 +84,10 @@ export class RetryChunkLoadPlugin {
                 if (retries < 1) {
                   var realSrc = oldGetScript(chunkId);
                   error.message = 'Loading chunk ' + chunkId + ' failed after ${maxRetries} retries.\\n(' + realSrc + ')';
-                  error.request = realSrc;${
-                    this.options.lastResortScript
-                      ? this.options.lastResortScript
-                      : ''
+                  error.request = realSrc;${lastResortScript ?? ''}
+                  if (!Boolean(${dontThrow})) {
+                    throw error;
                   }
-                  throw error;
                 }
                 return new Promise(function (resolve) {
                   setTimeout(function () {
@@ -93,7 +97,7 @@ export class RetryChunkLoadPlugin {
                     queryMap.set(chunkId, cacheBust);
                     countMap.set(chunkId, retries - 1);
                     resolve(${RuntimeGlobals.ensureChunk}(chunkId));
-                  }, ${this.options.retryDelay || 0})
+                  }, ${retryDelay || 0})
                 })
               });
             };

@@ -13,6 +13,11 @@ const cases: (RetryChunkLoadPluginOptions | undefined)[] = [
     chunks: ['main'],
     lastResortScript: "window.location.href='/500.html'",
   },
+  {
+    chunks: ['main'],
+    dontThrow: true,
+    lastResortScript: 'window.location.reload();',
+  },
 ];
 
 test.each(cases)('given config %j, match snapshot', async config => {
